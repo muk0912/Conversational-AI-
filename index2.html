@@ -803,12 +803,37 @@ try {
         }
     }
 
-    function submitRatings() {
-        saveCurrentRatings();
-        ratingContainer.style.display = 'none';
-        thankYouContainer.style.display = 'block';
-        console.log("Final ratings:", ratings);
+    async function submitRatings() {
+    saveCurrentRatings();
+
+    // Prepare the data to send to the backend
+    const participantData = {
+        participantId: participantId,
+        firstName: allParticipantData[participantId].firstName,
+        ratings: ratings
+    };
+
+    try {
+        const response = await fetch('http://localhost:3000/submit-ratings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(participantData)
+        });
+
+        if (response.ok) {
+            alert('Ratings submitted successfully!');
+            ratingContainer.style.display = 'none';
+            thankYouContainer.style.display = 'block';
+        } else {
+            alert('Failed to submit ratings. Please try again.');
+        }
+    } catch (error) {
+        console.error('Error submitting ratings:', error);
+        alert('An error occurred while submitting ratings.');
     }
+}
 
     function downloadRatingsAsExcel() {
         const wb = XLSX.utils.book_new();
