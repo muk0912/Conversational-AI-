@@ -384,7 +384,7 @@ button:disabled {
 </style>
 
 <div class="participant-info">
-    <input type="text" id="participant-id" placeholder="Enter Participant ID">
+    <input type="text" id="participant-name" placeholder="Enter Your First Name">
     <button id="start-btn">Start Evaluation</button>
 </div>
 
@@ -569,10 +569,8 @@ try {
     const submitBtn = document.getElementById('submit-btn');
     const downloadBtn = document.getElementById('download-excel');
     const downloadAllBtn = document.getElementById('download-all-excel');
-    const participantIdInput = document.getElementById('participant-id');
     const startBtn = document.getElementById('start-btn');
     const progressContainer = document.getElementById('progress-container');
-    const instructions = document.getElementById('instructions');
 
     const slider1 = document.getElementById('slider1');
     const slider2 = document.getElementById('slider2');
@@ -613,28 +611,36 @@ try {
     startBtn.addEventListener('click', startEvaluation);
 
     function startEvaluation() {
-        participantId = participantIdInput.value.trim();
+        const firstName = document.getElementById('participant-name').value.trim();
         
-        if (!participantId) {
-            alert("Please enter a participant ID to continue.");
+        if (!firstName) {
+            alert("Please enter your first name to continue.");
             return;
         }
         
-        participantIdInput.disabled = true;
+        // Generate a unique participant ID
+        participantId = Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+        
+        document.getElementById('participant-name').disabled = true;
         startBtn.style.display = 'none';
         
         progressContainer.style.display = 'block';
         chatContainer.style.display = 'block';
         ratingContainer.style.display = 'block';
         
-        if (allParticipantData[participantId]) {
-            ratings = allParticipantData[participantId];
-            currentStep = ratings.length - 1;
-            if (currentStep < 0) currentStep = 0;
-            alert(`Welcome back! You've completed ${ratings.length} out of ${questionsAndResponses.length} questions.`);
-        } else {
-            currentStep = 0;
-            ratings = [];
+        // Update allParticipantData structure to include firstName
+        if (!allParticipantData[participantId]) {
+            allParticipantData[participantId] = {
+                firstName: firstName,
+                ratings: []
+            };
+        }
+        
+        ratings = allParticipantData[participantId].ratings;
+        currentStep = ratings.length - 1;
+        if (currentStep < 0) currentStep = 0;
+        if (ratings.length > 0) {
+            alert(`Welcome back, ${firstName}! You've completed ${ratings.length} out of ${questionsAndResponses.length} questions.`);
         }
         
         updateTotalSteps();
@@ -647,7 +653,7 @@ try {
         const urlParams = new URLSearchParams(window.location.search);
         const urlParticipantId = urlParams.get('pid');
         if (urlParticipantId) {
-            participantIdInput.value = urlParticipantId;
+            participantId = urlParticipantId;
         }
     }
 
@@ -767,13 +773,15 @@ try {
     }
 
     function saveCurrentRatings() {
-        while (ratings.length <= currentStep) {
-            ratings.push(null);
+        let participantRatings = allParticipantData[participantId].ratings;
+        
+        while (participantRatings.length <= currentStep) {
+            participantRatings.push(null);
         }
         
         const item = questionsAndResponses[currentStep];
         
-        ratings[currentStep] = {
+        participantRatings[currentStep] = {
             id: item.id,
             type: item.type,
             questionIndex: currentStep + 1,
@@ -786,7 +794,7 @@ try {
             timestamp: new Date().toISOString()
         };
         
-        allParticipantData[participantId] = ratings;
+        allParticipantData[participantId].ratings = participantRatings;
         
         try {
             localStorage.setItem('aiEvaluationData', JSON.stringify(allParticipantData));
@@ -811,9 +819,19 @@ try {
 
     function downloadAllRatingsAsExcel() {
         const wb = XLSX.utils.book_new();
+        
+        // Prepare "All Ratings" sheet with first names included
         const allData = [];
         for (const participant in allParticipantData) {
-            allData.push(...allParticipantData[participant]);
+            const participantInfo = allParticipantData[participant];
+            participantInfo.ratings.forEach(rating => {
+                if (rating) {
+                    allData.push({
+                        ...rating,
+                        FirstName: participantInfo.firstName
+                    });
+                }
+            });
         }
         if (allData.length === 0) {
             alert("No data available to download.");
@@ -821,6 +839,16 @@ try {
         }
         const rawWs = XLSX.utils.json_to_sheet(allData);
         XLSX.utils.book_append_sheet(wb, rawWs, "All Ratings");
+        
+        // Prepare "Participants" sheet
+        const participantList = Object.keys(allParticipantData).map(pid => ({
+            "Participant ID": pid,
+            "First Name": allParticipantData[pid].firstName
+        }));
+        const participantsWs = XLSX.utils.json_to_sheet(participantList);
+        XLSX.utils.book_append_sheet(wb, participantsWs, "Participants");
+        
+        // Prepare "Question Matrix" sheet
         const questionMatrix = [];
         const participants = Object.keys(allParticipantData);
         for (let i = 0; i < questionsAndResponses.length; i++) {
@@ -831,7 +859,7 @@ try {
                 'Question Text': question.question.substring(0, 100) + '...'
             };
             participants.forEach(participant => {
-                const participantData = allParticipantData[participant];
+                const participantData = allParticipantData[participant].ratings;
                 const rating = participantData.find(r => r && r.questionIndex === i + 1);
                 if (rating) {
                     row[`${participant} - Implementation`] = rating.implementation;
@@ -845,6 +873,7 @@ try {
         }
         const matrixWs = XLSX.utils.json_to_sheet(questionMatrix);
         XLSX.utils.book_append_sheet(wb, matrixWs, "Question Matrix");
+        
         XLSX.writeFile(wb, "All_AI_Response_Ratings.xlsx");
     }
 
